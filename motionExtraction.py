@@ -6,25 +6,27 @@ import json
 
 #
 sameThresh = 0.5
-varianceThresh = 0.1
+varianceThresh = 500
 
-tClose = 3
-tThresh = 7
+tClose = 2
+tThresh = 6
 
 rThresh = 10
 
 frameDiff = 1
 frameskip = 100
+
 moveThresh = 40
-robotThresh = 10
-robotSize = 50
+robotThresh = 50
+robotSize = 45
+
 showSize = (540, 380)
 prevFrames = []
 
 maxContours = 15
 #
 
-video = cv2.VideoCapture(r'Final Tiebreaker - 2024 Silicon Valley Regional.mp4')
+video = cv2.VideoCapture(r'Match 1 (R1) - 2024 Hueneme Port Regional.mp4')
 ret, frame = video.read()
 rows, cols, ch = frame.shape
 
@@ -55,6 +57,9 @@ class FieldObject():
         cv2.circle(tAreas, point, r, t, cv2.FILLED)
         self.path.append((point, radius, t))
 
+    def updateT(point, radius, t):
+        cv2.circle(tAreas, point, r, t, cv2.FILLED)
+
     def getObject(point, radius, t):
         if radius < 5:
             return None
@@ -72,15 +77,6 @@ class FieldObject():
         tArea[tArea > tClose] = tClose
         tArea = np.reshape(tArea, (size,))
 
-        # tArea = 
-        # area = area[(area).sum(axis = 1) > 0]
-
-        # nonZero = area.size//3
-
-        # # print(nonZero, size)
-        # if nonZero/size < 0.1:
-        #     return 0
-
         #average pixels within radius
 
         if np.sum(tArea) == 0:
@@ -95,7 +91,7 @@ class FieldObject():
         #print(avg, std)
 
         if std > varianceThresh:
-            return None
+            return -1
         if 0.5 - abs((avg % 1.0) - 0.5) < sameThresh:
             id = round(avg)
             if id == 0:
@@ -164,6 +160,7 @@ try:
             continue
 
         out = idAreas.copy()
+        #out = cv2.cvtColor(np.uint8(tAreas.copy() * (255.0 / np.max(tAreas))), cv2.COLOR_GRAY2BGR)
 
         cv2.addWeighted(paths, 1, out, 1, 0, out)
         #out[maskLine] = paths
@@ -180,6 +177,8 @@ try:
             obj = FieldObject.getObject(center, r, n)
             if obj is None:
                 pass
+            elif obj ==-1:
+                FieldObject.updateT(center, r, n)
             elif obj == 0:
                 FieldObject(center, r, n)
             else:

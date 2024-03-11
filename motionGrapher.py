@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import cv2
 import random
 
-filename = "paths copy.json"
+filename = "paths.json"
 
 with open(filename, "r") as file:
     data = json.load(file)
