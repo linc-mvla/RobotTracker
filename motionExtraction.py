@@ -7,14 +7,17 @@ import json
 #
 sameThresh = 0.5
 varianceThresh = 500
+percentMatch = 0.7 #if area covered is some percent
+#      ________ < t        
+#     / < t - thresh +tClose
+#____/ < t - tThresh 
+tClose = 5 * 60 
+tThresh = 6 * 60 
 
-tClose = 2
-tThresh = 6
-
-rThresh = 10
+rThresh = 10 # threshold on changing radius
 
 frameDiff = 1
-frameskip = 100
+frameskip = 200
 
 moveThresh = 40
 robotThresh = 30
@@ -26,24 +29,24 @@ prevFrames = []
 maxContours = 15
 
 #motion, average, contours, time, tracking
-mode = 'average'
+mode = 'time'
 
-
+fileName = 'Huenmeme'
 video = cv2.VideoCapture(r'Match 1 (R1) - 2024 Hueneme Port Regional.mp4')
+
 ret, frame = video.read()
 rows, cols, ch = frame.shape
 
-idAreas = np.zeros((rows, cols, 3), dtype = np.uint8) #(index base 255)
+idAreas = np.zeros((rows, cols), dtype = np.float64)
 tAreas = np.zeros((rows, cols), dtype = np.float64)
 paths = np.zeros((rows, cols, 3), dtype = np.uint8)
-maxT = tThresh - tClose
+
 class FieldObject():
     objNum = 1
     objects = []
 
     def __init__(self, initPoint, radius, t):
         self.id = FieldObject.objNum
-        self.color = (self.id//(255*255), self.id//255, self.id % 255)
         self.randColor = (random.randint(50, 255), random.randint(50, 255), random.randint(50, 255))
         FieldObject.objNum += 1
 
@@ -56,62 +59,81 @@ class FieldObject():
         if len(self.path) > 0:
             cv2.line(paths, self.path[-1][0], point, self.randColor, thickness = 2)
 
-        cv2.circle(idAreas, point, r, self.color, cv2.FILLED)
+        cv2.circle(idAreas, point, r, self.id, cv2.FILLED)
         cv2.circle(tAreas, point, r, t, cv2.FILLED)
         self.path.append((point, radius, t))
 
-    def updateT(point, radius, t):
+    def updateT(point, r, t):
         cv2.circle(tAreas, point, r, t, cv2.FILLED)
 
     def getObject(point, radius, t):
         if radius < 5:
             return None
         
-        area = idAreas[(point[1] - radius) : (point[1] + radius), (point[0] - radius) : (point[0] + radius)]
+        area = idAreas[(point[1] - radius) : (point[1] + radius), (point[0] - radius) : (point[0] + radius)].copy()
 
         if area.size == 0:
             return None
+        
+        area = np.reshape(area, (area.size,))
 
-        size = area.size//3
-        area = np.reshape(area, (size, 3))
+        if np.sum(area) == 0:
+            return 0
 
-        tArea =  tAreas[(point[1] - radius) : (point[1] + radius), (point[0] - radius) : (point[0] + radius)] - (t - tThresh)
+        tArea = tAreas[(point[1] - radius) : (point[1] + radius), (point[0] - radius) : (point[0] + radius)].copy() - (t - tThresh)
         tArea[tArea < 0] = 0
         tArea[tArea > tClose] = tClose
-        tArea = np.reshape(tArea, (size,))
-
-        #average pixels within radius
+        tArea = np.reshape(tArea, (tArea.size,))
 
         if np.sum(tArea) == 0:
             return 0
 
-        avgCol = np.average(area, weights = tArea, axis = 0)
-        stdCol = np.average((area - avgCol)**2, weights = tArea, axis = 0)
+        ids, inv = np.unique(area, return_inverse = True)
+        counts = np.bincount(inv, tArea)
 
-        avg = avgCol[0]*(255*255) + avgCol[1]*255 + avgCol[2]
-        std = stdCol[0]*(255*255) + stdCol[1]*255 + stdCol[2]
+        totCounts = tArea.size * tClose
+        for id, n in zip(ids, counts):
+            if n / totCounts > percentMatch:
+                if id == 0:
+                    return 0
+                o = FieldObject.objects[int(id) - 1]
+                p, r, t = o.path[-1]
+                if abs(r - radius) > rThresh:
+                    continue
 
-        #print(avg, std)
+                dx = point[0]-p[0]
+                dy = point[1]-p[1]
+                d = (dx*dx) + (dy*dy)
+                if d < min(radius*radius, r*r):
+                    return o
+                else:
+                    continue
 
-        if std > varianceThresh:
-            return -1
-        if 0.5 - abs((avg % 1.0) - 0.5) < sameThresh:
-            id = round(avg)
-            if id == 0:
-                return 0
+        # #average pixels within radius
+        # avg = np.average(area, weights = tArea, axis = 0)
+        # std = np.average((area - avg)**2, weights = tArea, axis = 0)
+
+        # #print(avg, std)
+
+        # if std > varianceThresh:
+        #     return -1
+        # if 0.5 - abs((avg % 1.0) - 0.5) < sameThresh:
+        #     id = round(avg)
+        #     if id == 0:
+        #         return 0
             
-            o = FieldObject.objects[id - 1]
-            p, r, t = o.path[-1]
-            if abs(r - radius) > rThresh:
-                return 0
+        #     o = FieldObject.objects[id - 1]
+        #     p, r, t = o.path[-1]
+        #     if abs(r - radius) > rThresh:
+        #         return 0
 
-            dx = point[0]-p[0]
-            dy = point[1]-p[1]
-            d = (dx*dx) + (dy*dy)
-            if d < min(radius*radius, r*r):
-                return o
-            else:
-                return None
+        #     dx = point[0]-p[0]
+        #     dy = point[1]-p[1]
+        #     d = (dx*dx) + (dy*dy)
+        #     if d < min(radius*radius, r*r):
+        #         return o
+        #     else:
+        #         return None
         return None
         
 objects = []
@@ -156,9 +178,6 @@ try:
 
         contours, heirarchy = cv2.findContours(image = robMask, mode = cv2.RETR_TREE, method = cv2.CHAIN_APPROX_NONE)
 
-        #out = cv2.bitwise_and(frame, frame, mask = robMask)
-        #cv2.drawContours(image = out, contours = contours, contourIdx = -1, color = (0,255,0), thickness = 2)
-
         if len(contours) > maxContours:
             continue
 
@@ -168,10 +187,17 @@ try:
             out = cv2.cvtColor(diff, cv2.COLOR_GRAY2BGR)
         elif mode == 'contour':
             out = cv2.cvtColor(robMask, cv2.COLOR_GRAY2BGR)
+            cv2.drawContours(image = out, contours = contours, contourIdx = -1, color = (0,255,0), thickness = 2)
         elif mode == 'time':
-            out = cv2.cvtColor(np.uint8(tAreas.copy() * (255.0 / np.max(tAreas))), cv2.COLOR_GRAY2BGR)
+            if np.max(tAreas) < 1:
+                out = cv2.cvtColor(np.uint8(tAreas), cv2.COLOR_GRAY2BGR)
+            else:
+                out = cv2.cvtColor(np.uint8(tAreas * (255.0 / np.max(tAreas))), cv2.COLOR_GRAY2BGR)
         else:
-            out = idAreas.copy()
+            if np.max(idAreas) < 1:
+                out = cv2.cvtColor(np.uint8(idAreas), cv2.COLOR_GRAY2BGR)
+            else:
+                out = cv2.cvtColor(np.uint8(idAreas * (255.0 / np.max(idAreas))), cv2.COLOR_GRAY2BGR)
 
         cv2.addWeighted(paths, 1, out, 1, 0, out)
         #out[maskLine] = paths
@@ -188,7 +214,7 @@ try:
             obj = FieldObject.getObject(center, r, n)
             if obj is None:
                 pass
-            elif obj ==-1:
+            elif obj == -1:
                 FieldObject.updateT(center, r, n)
             elif obj == 0:
                 FieldObject(center, r, n)
@@ -209,10 +235,10 @@ except Exception as error:
     traceback.print_exc()
     pass
 finally:
-    cv2.imwrite("paths.png", paths) 
+    cv2.imwrite(fileName+"Paths.png", paths) 
     video.release()
     cv2.destroyAllWindows()
-    with open("paths.json", "w") as file:
+    with open(fileName + "Paths.json", "w") as file:
         json_str = json.dumps({p.id : p.path for p in FieldObject.objects})
         json_str = json_str.replace(', "', ',\n "')
         file.write(json_str)
