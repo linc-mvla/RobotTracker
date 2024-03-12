@@ -17,14 +17,17 @@ frameDiff = 1
 frameskip = 100
 
 moveThresh = 40
-robotThresh = 50
+robotThresh = 30
 robotSize = 45
 
 showSize = (540, 380)
 prevFrames = []
 
 maxContours = 15
-#
+
+#motion, average, contours, time, tracking
+mode = 'average'
+
 
 video = cv2.VideoCapture(r'Match 1 (R1) - 2024 Hueneme Port Regional.mp4')
 ret, frame = video.read()
@@ -159,8 +162,16 @@ try:
         if len(contours) > maxContours:
             continue
 
-        out = idAreas.copy()
-        #out = cv2.cvtColor(np.uint8(tAreas.copy() * (255.0 / np.max(tAreas))), cv2.COLOR_GRAY2BGR)
+        if mode == 'motion':
+            out = masked
+        elif mode == 'average':
+            out = cv2.cvtColor(diff, cv2.COLOR_GRAY2BGR)
+        elif mode == 'contour':
+            out = cv2.cvtColor(robMask, cv2.COLOR_GRAY2BGR)
+        elif mode == 'time':
+            out = cv2.cvtColor(np.uint8(tAreas.copy() * (255.0 / np.max(tAreas))), cv2.COLOR_GRAY2BGR)
+        else:
+            out = idAreas.copy()
 
         cv2.addWeighted(paths, 1, out, 1, 0, out)
         #out[maskLine] = paths

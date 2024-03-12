@@ -33,6 +33,8 @@ tHeight = subP(trapezoid[0], trapezoid[3])[1]
 fieldWidth = 16.5
 fieldHeight = 8.25
 
+minLength = 20
+
 count = 0
 newPaths = []
 tMax = 0
@@ -44,7 +46,7 @@ for id, path in data.items():
     cy = [p[0][1] for p in path]
     dx = max(cx) - min(cx)
     dy = max(cy) - min(cy)
-    if dx*dx + dy*dy < 50*50:
+    if dx*dx + dy*dy < minLength*minLength:
         continue
 
     x = []
