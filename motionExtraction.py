@@ -4,15 +4,16 @@ import traceback
 import random
 import json
 
-#
-sameThresh = 0.5
-varianceThresh = 500
+# Constants
+# sameThresh = 0.5
+# varianceThresh = 500
+
 percentMatch = 0.7 #if area covered is some percent
-#      ________ < t        
-#     / < t - thresh +tClose
-#____/ < t - tThresh 
-tClose = 5 * 60 
-tThresh = 6 * 60 
+percentUnknown = 0.3 # if area is covered by multiple objects
+
+tClose = 1 * 30  #      ________ 0   
+tThresh = 2 * 30 #     / tClose
+                 #____/tThresh 
 
 rThresh = 10 # threshold on changing radius
 
@@ -82,7 +83,7 @@ class FieldObject():
 
         tArea = tAreas[(point[1] - radius) : (point[1] + radius), (point[0] - radius) : (point[0] + radius)].copy() - (t - tThresh)
         tArea[tArea < 0] = 0
-        tArea[tArea > tClose] = tClose
+        tArea[tArea > (tThresh - tClose)] = tThresh - tClose
         tArea = np.reshape(tArea, (tArea.size,))
 
         if np.sum(tArea) == 0:
@@ -91,23 +92,26 @@ class FieldObject():
         ids, inv = np.unique(area, return_inverse = True)
         counts = np.bincount(inv, tArea)
 
-        totCounts = tArea.size * tClose
+        totCounts = tArea.size * (tThresh - tClose)
+        maxPercent = 0
         for id, n in zip(ids, counts):
-            if n / totCounts > percentMatch:
+            percent = n / totCounts
+            if percent > percentMatch:
                 if id == 0:
                     return 0
                 o = FieldObject.objects[int(id) - 1]
                 p, r, t = o.path[-1]
-                if abs(r - radius) > rThresh:
-                    continue
-
-                dx = point[0]-p[0]
-                dy = point[1]-p[1]
-                d = (dx*dx) + (dy*dy)
-                if d < min(radius*radius, r*r):
-                    return o
-                else:
-                    continue
+                if abs(r - radius) < rThresh:
+                    dx = point[0]-p[0]
+                    dy = point[1]-p[1]
+                    d = (dx*dx) + (dy*dy)
+                    if d < min(radius*radius, r*r):
+                        return o
+            elif percent > maxPercent:
+                maxPercent = percent
+                
+        if maxPercent > percentUnknown:
+            return -1
 
         # #average pixels within radius
         # avg = np.average(area, weights = tArea, axis = 0)
@@ -189,10 +193,14 @@ try:
             out = cv2.cvtColor(robMask, cv2.COLOR_GRAY2BGR)
             cv2.drawContours(image = out, contours = contours, contourIdx = -1, color = (0,255,0), thickness = 2)
         elif mode == 'time':
-            if np.max(tAreas) < 1:
-                out = cv2.cvtColor(np.uint8(tAreas), cv2.COLOR_GRAY2BGR)
-            else:
-                out = cv2.cvtColor(np.uint8(tAreas * (255.0 / np.max(tAreas))), cv2.COLOR_GRAY2BGR)
+            # if np.max(tAreas) < 1:
+            #     out = cv2.cvtColor(np.uint8(tAreas), cv2.COLOR_GRAY2BGR)
+            # else:
+            #     out = cv2.cvtColor(np.uint8(tAreas * (255.0 / np.max(tAreas))), cv2.COLOR_GRAY2BGR)
+            tArea = (tAreas.copy() - (n - tThresh)) * (255.0 / (tThresh - tClose))
+            tArea[tArea < 0] = 0
+            tArea[tArea > 255] = 255
+            out = cv2.cvtColor(np.uint8(tArea), cv2.COLOR_GRAY2BGR)
         else:
             if np.max(idAreas) < 1:
                 out = cv2.cvtColor(np.uint8(idAreas), cv2.COLOR_GRAY2BGR)
@@ -212,16 +220,20 @@ try:
             r = int(np.mean(np.sqrt((dist*dist).sum(axis = 2))))
 
             obj = FieldObject.getObject(center, r, n)
+            color = (0, 255, 0)
             if obj is None:
                 pass
             elif obj == -1:
                 FieldObject.updateT(center, r, n)
+                color = (0, 255, 255)
             elif obj == 0:
                 FieldObject(center, r, n)
+                color = (255, 0, 0)
             else:
+                color = (0, 255, 0)
                 obj.addPoint(center, r, n)
 
-            cv2.circle(out, center, r, (0,255,0), thickness = 2)
+            cv2.circle(out, center, r, color, thickness = 2)
 
         out = cv2.resize(out, showSize, fx = 0, fy = 0, interpolation = cv2.INTER_CUBIC)
         frame = cv2.resize(frame, showSize, fx = 100, fy = 0, interpolation = cv2.INTER_CUBIC)
