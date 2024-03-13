@@ -5,7 +5,9 @@ import cv2
 import random
 
 filename = "Huenmemepaths.json"
-minLength = 20
+minLength = 0
+
+print("8" + "="*random.randint(0, 40) + ">")
 
 with open(filename, "r") as file:
     data = json.load(file)

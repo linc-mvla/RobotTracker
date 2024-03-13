@@ -8,11 +8,11 @@ import json
 # sameThresh = 0.5
 # varianceThresh = 500
 
-percentMatch = 0.7 #if area covered is some percent
+percentMatch = 0.5 #if area covered is some percent
 percentUnknown = 0.3 # if area is covered by multiple objects
 
-tClose = 1 * 30  #      ________ 0   
-tThresh = 2 * 30 #     / tClose
+tClose = 0.3 * 30  #      ________ 0   
+tThresh = 0.6 * 30 #    / tClose
                  #____/tThresh 
 
 rThresh = 10 # threshold on changing radius
@@ -20,7 +20,7 @@ rThresh = 10 # threshold on changing radius
 frameDiff = 1
 frameskip = 200
 
-moveThresh = 40
+moveThresh = 20
 robotThresh = 30
 robotSize = 45
 
@@ -30,7 +30,7 @@ prevFrames = []
 maxContours = 15
 
 #motion, average, contours, time, tracking
-mode = 'time'
+mode = 'motion'
 
 fileName = 'Huenmeme'
 video = cv2.VideoCapture(r'Match 1 (R1) - 2024 Hueneme Port Regional.mp4')
@@ -38,8 +38,8 @@ video = cv2.VideoCapture(r'Match 1 (R1) - 2024 Hueneme Port Regional.mp4')
 ret, frame = video.read()
 rows, cols, ch = frame.shape
 
-idAreas = np.zeros((rows, cols), dtype = np.float64)
-tAreas = np.zeros((rows, cols), dtype = np.float64)
+idAreas = np.zeros((rows, cols), dtype = np.float32)
+tAreas = np.zeros((rows, cols), dtype = np.float32)
 paths = np.zeros((rows, cols, 3), dtype = np.uint8)
 
 class FieldObject():
@@ -65,7 +65,14 @@ class FieldObject():
         self.path.append((point, radius, t))
 
     def updateT(point, r, t):
-        cv2.circle(tAreas, point, r, t, cv2.FILLED)
+        x1 = (point[1] - r)
+        y1 = (point[0] - r)
+        x2 = (point[1] + r)
+        y2 = (point[0] + r)
+        area = tAreas[x1 : x2,  y1 : y2].copy()
+        circleMask = cv2.circle(np.zeros(area.shape, np.float32), (r, r), r, 1.0, thickness=cv2.FILLED)
+        area = np.where((area*circleMask) > (t - tClose), t, area)
+        tAreas[x1:x2, y1:y2] = area
 
     def getObject(point, radius, t):
         if radius < 5:
@@ -220,7 +227,7 @@ try:
             r = int(np.mean(np.sqrt((dist*dist).sum(axis = 2))))
 
             obj = FieldObject.getObject(center, r, n)
-            color = (0, 255, 0)
+            color = (0, 0, 255)
             if obj is None:
                 pass
             elif obj == -1:
@@ -228,7 +235,7 @@ try:
                 color = (0, 255, 255)
             elif obj == 0:
                 FieldObject(center, r, n)
-                color = (255, 0, 0)
+                color = (255, 255, 0)
             else:
                 color = (0, 255, 0)
                 obj.addPoint(center, r, n)
